@@ -2,8 +2,10 @@
 
 # Press ⌃R to execute it or replace it with your code.
 # Press Double ⇧ to search everywhere for classes, files, tool windows, actions, and settings.
+import datetime
 
 import requests
+import csv
 
 # mapping:
 '''
@@ -34,12 +36,14 @@ import requests
 
 # data source from daoshuju.com (unauthorized)
 req_url = 'https://daoshuju.com/api/project/record'
-player_name = '小刘666'
-size = 500
-item_map = {}
-all_records = []
+player_name = 'yyfyyf'  # 玩家ID，注意这里的ID需要和网站上面的ID相同
+code_cup = 'dy220701'  # 第一届天之上杯: dy220509，第二届 dy220701
+size = 500  # 获取多少条比赛记录
+item_map = {}  # 对照表
+all_records = []  # 从网站获取到的所有记录，存在这里
 
 
+# 这个类用来存储"一位选手"在"一局比赛记录"当中的表现
 class PlayerRecord:
     def __init__(self):
         ult = ''  # 大招选择
@@ -52,6 +56,7 @@ class PlayerRecord:
         support = ''  # 助攻数
         playr = ''  # 选手名字
         comm = ''  # 阵营
+        time = ''  # 时间
         alies = []  # 队友
         enemies = []  # 对手
 
@@ -62,7 +67,7 @@ def req_data():
     # change 'size' param to change the size of the records
     params = {
         'pageCode': 'omg42',
-        'scCode': 'dy220509',
+        'scCode': code_cup,
         'requestType': 0,
         'projectId': None,
         'scCodeId': None,
@@ -92,6 +97,7 @@ def req_data():
         player_list = rec_detail['10288']
         player_rec = PlayerRecord()
         player_rec.playr = 'unknown'
+        player_rec.time = rec_time
         other_player = []
         for player in player_list:
             playr = get_item_name(player['10337'])  # 选手名字
@@ -157,9 +163,9 @@ def get_item_name(item_code):
     return item_map[item_code]
 
 
+# 所有英雄的数据和胜率
 def all_heroes_statistic():
     hero_map = {}
-    hero_value = {}
     for record in all_records:
         hero = record.hero
         win = record.result == '胜利'
@@ -169,21 +175,28 @@ def all_heroes_statistic():
             hero_map[hero].append(1)
         else:
             hero_map[hero].append(0)
+    hero_value = []
     for hero in hero_map:
         values = hero_map[hero]
+        win = 0
+        lose = 0
         sum = 0
         for i in values:
             sum += i
+            if i == 1:
+                win += 1
+            else:
+                lose += 1
         avg = sum / len(values)
-        hero_value[hero] = avg
-    print(player_name + '选择这些英雄时的胜率为：')
-    print(hero_value)
+        hero_value.append([hero, win, lose, round(avg, 2)])
+    header = ['英雄', '胜场', '负场', '胜率']
+    file_name = datetime.date.today().__str__() + '_' + player_name + '_hero' + '.csv'
+    write_into_file(file_name, header, hero_value)
 
 
 # 所有队友胜率
 def all_alies_statistic():
     allies_map = {}
-    allies_value = {}
     for record in all_records:
         for ally in record.alies:
             player = ally.playr
@@ -194,102 +207,181 @@ def all_alies_statistic():
                 allies_map[player].append(1)
             else:
                 allies_map[player].append(0)
+    hero_value = []
     for ally in allies_map:
         values = allies_map[ally]
-        sum = 0
+        win = 0
+        lose = 0
+        sum_of_ally = 0
         for i in values:
-            sum += i
-        avg = sum / len(values)
-        allies_value[ally] = avg
-    print(player_name + '和这些选手搭档时的胜率为：')
-    print(allies_value)
+            sum_of_ally += i
+            if i == 1:
+                win += 1
+            else:
+                lose += 1
+        avg = sum_of_ally / len(values)
+        hero_value.append([ally, win, lose, round(avg, 2)])
+    header = ['队友', '胜场', '负场', '胜率']
+    file_name = datetime.date.today().__str__() + '_' + player_name + '_ally' + '.csv'
+    write_into_file(file_name, header, hero_value)
 
 
 # 所有对手胜率
 def all_enemy_statistic():
-    allies_map = {}  # 偷个懒，不改了
-    allies_value = {}
+    enemy_map = {}
     for record in all_records:
-        for ally in record.enemies:
-            player = ally.playr
+        for enemy in record.enemies:
+            player = enemy.playr
             win = record.result == '胜利'
-            if player not in allies_map:
-                allies_map[player] = []
+            if player not in enemy_map:
+                enemy_map[player] = []
             if win:
-                allies_map[player].append(1)
+                enemy_map[player].append(1)
             else:
-                allies_map[player].append(0)
-    for ally in allies_map:
-        values = allies_map[ally]
-        sum = 0
+                enemy_map[player].append(0)
+    enemy_value = []
+    for enemy in enemy_map:
+        values = enemy_map[enemy]
+        win = 0
+        lose = 0
+        sum_of_enemy = 0
         for i in values:
-            sum += i
-        avg = sum / len(values)
-        allies_value[ally] = avg
-    print(player_name + '在这些选手对面时的胜率为：')
-    print(allies_value)
+            sum_of_enemy += i
+            if i == 1:
+                win += 1
+            else:
+                lose += 1
+        avg = sum_of_enemy / len(values)
+        enemy_value.append([enemy, win, lose, round(avg, 2)])
+    header = ['对手', '胜场', '负场', '胜率']
+    file_name = datetime.date.today().__str__() + '_' + player_name + '_enemy' + '.csv'
+    write_into_file(file_name, header, enemy_value)
 
 
+# 计算所有大招的使用次数和胜率数据
 def all_ult_statistics():
-    hero_map = {}  # 偷个懒，不改名字了
-    hero_value = {}
+    ult_map = {}
     for record in all_records:
-        hero = record.ult
+        ult = record.ult
         win = record.result == '胜利'
-        if hero not in hero_map:
-            hero_map[hero] = []
+        if ult not in ult_map:
+            ult_map[ult] = []
         if win:
-            hero_map[hero].append(1)
+            ult_map[ult].append(1)
         else:
-            hero_map[hero].append(0)
-    for hero in hero_map:
-        values = hero_map[hero]
-        sum = 0
+            ult_map[ult].append(0)
+    ult_value = []
+    for ult in ult_map:
+        values = ult_map[ult]
+        win = 0
+        lose = 0
+        sum_of_ult = 0
         for i in values:
-            sum += i
-        avg = sum / len(values)
-        hero_value[hero] = avg
-    print(player_name + '选择这些大招时的胜率为：')
-    print(hero_value)
+            sum_of_ult += i
+            if i == 1:
+                win += 1
+            else:
+                lose += 1
+        avg = sum_of_ult / len(values)
+        ult_value.append([ult, win, lose, round(avg, 2)])
+    header = ['大招', '胜场', '负场', '胜率']
+    file_name = datetime.date.today().__str__() + '_' + player_name + '_ult' + '.csv'
+    write_into_file(file_name, header, ult_value)
 
 
+# 计算所有小技能的使用次数和胜率数据
 def all_skill_statistics():
-    hero_map = {}  # 偷个懒，不改名字了
-    hero_value = {}
+    skill_map = {}
     for record in all_records:
-        hero = record.skill
+        skill = record.skill
         win = record.result == '胜利'
-        if hero not in hero_map:
-            hero_map[hero] = []
+        if skill not in skill_map:
+            skill_map[skill] = []
         if win:
-            hero_map[hero].append(1)
+            skill_map[skill].append(1)
         else:
-            hero_map[hero].append(0)
-    for hero in hero_map:
-        values = hero_map[hero]
-        sum = 0
+            skill_map[skill].append(0)
+    skill_value = []
+    for skill in skill_map:
+        values = skill_map[skill]
+        win = 0
+        lose = 0
+        sum_of_skill = 0
         for i in values:
-            sum += i
-        avg = sum / len(values)
-        hero_value[hero] = avg
-    print(player_name + '选择这些小技能时的胜率为：')
-    print(hero_value)
+            sum_of_skill += i
+            if i == 1:
+                win += 1
+            else:
+                lose += 1
+        avg = sum_of_skill / len(values)
+        skill_value.append([skill, win, lose, round(avg, 2)])
+    header = ['技能', '胜场', '负场', '胜率']
+    file_name = datetime.date.today().__str__() + '_' + player_name + '_skill' + '.csv'
+    write_into_file(file_name, header, skill_value)
+
+
+# 所有称号数据
+def all_titles_statistic():
+    title_map = {}
+    for record in all_records:
+        title_list = record.title_list
+        if title_list is None or len(title_list) == 0:
+            title_list = ['白板']
+        for title in title_list:
+            win = record.result == '胜利'
+            if title not in title_map:
+                title_map[title] = []
+            if win:
+                title_map[title].append(1)
+            else:
+                title_map[title].append(0)
+    title_value = []
+    for title in title_map:
+        values = title_map[title]
+        win = 0
+        lose = 0
+        sum_of_title = 0
+        for i in values:
+            sum_of_title += i
+            if i == 1:
+                win += 1
+            else:
+                lose += 1
+        avg = sum_of_title / len(values)
+        title_value.append([title, win, lose, round(avg, 2)])
+    header = ['称号', '胜场', '负场', '胜率']
+    file_name = datetime.date.today().__str__() + '_' + player_name + '_title' + '.csv'
+    write_into_file(file_name, header, title_value)
+
+
+# 僵后选人胜率
+# def pick_player_statistic():
+#     def sort_by_time(record):
+#         return record.time
+#     new_list = all_records.copy()
+#
+
+# 把内容写入文件
+# file_name: 文件名
+# header: 第一行
+# content_list: 具体内容
+def write_into_file(file_name, header, content_list):
+    with open(file_name, 'w', encoding='utf-8-sig') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(header)
+        for content in content_list:
+            writer.writerow(content)
 
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     req_data()
-    # print(all_records)
     # todo: 所有英雄胜率，所有技能胜率，队友对手胜率，僵后选人胜率
-    print('')
     all_heroes_statistic()
-    print('')
     all_alies_statistic()
-    print('')
     all_enemy_statistic()
-    print('')
     all_ult_statistics()
-    print('')
     all_skill_statistics()
+    all_titles_statistic()
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
